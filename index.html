@@ -471,8 +471,9 @@ let streak      = [];
 let lastEmitted = null;
 let latestConf  = new Array(CLASSES.length).fill(0);
 let holistic    = null;
-let camRunning  = false;
-let lastResult  = null;
+let camRunning   = false;
+let lastResult   = null;
+let handsPresent = false;
 
 const video         = document.getElementById('video');
 const outCanvas     = document.getElementById('output-canvas');
@@ -609,6 +610,7 @@ async function maybeInfer(results) {
 }
 
 function showPrediction(word, conf) {
+  if (!handsPresent) return;  // race-condition guard
   predWord.textContent = word.toUpperCase();
   predWord.classList.remove('flash');
   void predWord.offsetWidth;
@@ -652,8 +654,9 @@ function onResults(results) {
   document.getElementById('dbg-hands').textContent =
     `Hands: L=${!!results.leftHandLandmarks} R=${!!results.rightHandLandmarks}`;
 
-  // No hands → clear display and reset buffer/smoother
+  // No hands → clear display and reset everything
   if (n === 0) {
+    handsPresent = false;
     predWord.textContent  = '—';
     confLabel.textContent = 'Waiting for sign…';
     frameBuffer  = [];
@@ -664,6 +667,7 @@ function onResults(results) {
     document.getElementById('dbg-buffer').textContent = 'Buffer: 0 / 30';
     return;
   }
+  handsPresent = true;
 
   const features = extractFeatures(results);
   frameBuffer.push(features);
