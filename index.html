@@ -202,6 +202,58 @@
     text-align: right;
   }
 
+  /* ── User Guide ── */
+  #guide-panel { background: var(--navy); overflow-y: auto; }
+  #guide-cards { display: flex; flex-direction: column; gap: 20px; }
+
+  .guide-card {
+    background: #0a2040;
+    border: 1px solid var(--blue);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .guide-card-header {
+    background: var(--blue);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .guide-word {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--white);
+  }
+  .guide-card-body { padding: 14px 16px; }
+  .guide-images {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .guide-images img, .guide-images gif {
+    height: 140px;
+    width: auto;
+    max-width: 160px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 2px solid #1a3a60;
+  }
+  .guide-arrow {
+    font-size: 22px;
+    color: var(--teal);
+    flex-shrink: 0;
+  }
+  .guide-desc {
+    font-size: 14px;
+    color: var(--light);
+    line-height: 1.6;
+  }
+
   /* Instructions */
   .asl-instructions {
     padding: 10px 20px;
@@ -329,6 +381,7 @@
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('asl')">👁 ASL Translator</button>
   <button class="tab-btn" onclick="switchTab('board')">🤚 Communication Board</button>
+  <button class="tab-btn" onclick="switchTab('guide')">📖 User Guide</button>
 </div>
 
 <!-- ══ ASL PANEL ══ -->
@@ -373,6 +426,16 @@
   </div>
 
   <div id="phrase-container" class="phrase-grid"></div>
+</div>
+
+<!-- ══ GUIDE PANEL ══ -->
+<div id="guide-panel" class="panel">
+  <div style="padding:16px;overflow-y:auto;flex:1;">
+    <p style="color:var(--teal);font-size:13px;text-align:center;margin-bottom:16px;">
+      Hold each sign clearly in front of the camera for ~1 second. Multiple images indicate a movement.
+    </p>
+    <div id="guide-cards"></div>
+  </div>
 </div>
 
 <!-- Speaking banner -->
@@ -723,11 +786,72 @@ startup();
 // TAB SWITCHING
 // ══════════════════════════════════════════════
 function switchTab(name) {
+  const tabs   = ['asl','board','guide'];
+  const panels = ['asl-panel','board-panel','guide-panel'];
   document.querySelectorAll('.tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', (name==='asl'?0:1)===i));
-  document.getElementById('asl-panel').classList.toggle('active', name==='asl');
-  document.getElementById('board-panel').classList.toggle('active', name==='board');
+    b.classList.toggle('active', tabs[i] === name));
+  panels.forEach(id =>
+    document.getElementById(id).classList.toggle('active', id === name + '-panel'));
 }
+
+// ══════════════════════════════════════════════
+// USER GUIDE
+// ══════════════════════════════════════════════
+const GUIDE_SIGNS = [
+  {
+    word: 'Doctor',
+    images: ['images/doctor.gif'],
+    desc: 'Tap the fingertips of your dominant "bent hand" twice on the upturned wrist of your other hand.'
+  },
+  {
+    word: 'Help',
+    images: ['images/help.gif'],
+    desc: 'Form a loose fist (thumb-A hand) with your dominant hand. Place it on top of your open non-dominant hand and lift both hands upward together.'
+  },
+  {
+    word: 'No',
+    images: ['images/no_1.jpg', 'images/no_2.jpg'],
+    desc: 'Bring your dominant hand\'s thumb, index, and middle fingers together and tap them twice — like a mouth snapping shut.'
+  },
+  {
+    word: 'Pain',
+    images: ['images/hurt_1.jpg', 'images/hurt_2jpg.jpg'],
+    desc: 'Extend the index fingers of both hands and bring them toward each other twice with a jabbing movement.'
+  },
+  {
+    word: 'Water',
+    images: ['images/water.gif'],
+    desc: 'Form your dominant hand into the letter "W" (three fingers up). Touch your index finger to your lips twice.'
+  },
+  {
+    word: 'Yes',
+    images: ['images/yes1.jpg'],
+    desc: 'Make a fist with your dominant hand, palm facing forward. Bob or nod your fist up and down a few times — like a head nodding in agreement.'
+  },
+];
+
+function buildGuide() {
+  const container = document.getElementById('guide-cards');
+  container.innerHTML = GUIDE_SIGNS.map(sign => {
+    const imgs = sign.images.map((src, i) => {
+      const arrow = (i < sign.images.length - 1)
+        ? `<span class="guide-arrow">→</span>` : '';
+      return `<img src="${src}" alt="${sign.word} step ${i+1}">${arrow}`;
+    }).join('');
+    return `
+      <div class="guide-card">
+        <div class="guide-card-header">
+          <div class="guide-word">${sign.word}</div>
+        </div>
+        <div class="guide-card-body">
+          <div class="guide-images">${imgs}</div>
+          <div class="guide-desc">${sign.desc}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+buildGuide();
 
 // ══════════════════════════════════════════════
 // COMMUNICATION BOARD
