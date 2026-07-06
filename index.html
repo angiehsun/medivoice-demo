@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Medivoice — Live Demo</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -308,19 +309,72 @@
     border: 1px solid var(--blue);
     border-radius: 12px;
     color: var(--white);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
-    padding: 20px 14px;
+    padding: 16px 10px;
     cursor: pointer;
     text-align: center;
     line-height: 1.3;
     transition: all 0.15s;
     -webkit-tap-highlight-color: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
   }
   .phrase-btn:active, .phrase-btn.speaking {
     background: var(--blue);
     border-color: var(--teal);
     transform: scale(0.97);
+  }
+  .phrase-icon { font-size: 22px; line-height: 1; color: var(--teal); }
+  .phrase-text { font-size: 12px; }
+
+  /* Guide sections */
+  .guide-section {
+    background: #0d2540;
+    border: 1px solid #1e4d82;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .guide-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--teal);
+    margin-bottom: 4px;
+  }
+  .guide-steps { display: flex; flex-direction: column; gap: 8px; }
+  .guide-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 13px;
+    color: #c8d8f0;
+    line-height: 1.45;
+  }
+  .step-num {
+    min-width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--blue);
+    color: var(--white);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .guide-tip {
+    font-size: 12px;
+    color: #7ab3d4;
+    background: rgba(30,77,130,0.4);
+    border-radius: 8px;
+    padding: 8px 12px;
   }
 
   /* Speaking banner */
@@ -430,11 +484,39 @@
 
 <!-- ══ GUIDE PANEL ══ -->
 <div id="guide-panel" class="panel">
-  <div style="padding:16px;overflow-y:auto;flex:1;">
-    <p style="color:var(--teal);font-size:13px;text-align:center;margin-bottom:16px;">
-      Hold each sign clearly in front of the camera for ~1 second. Multiple images indicate a movement.
-    </p>
+  <div style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:24px;">
+
+    <!-- How to use ASL Translator -->
+    <div class="guide-section">
+      <div class="guide-section-title"><i class="fa-solid fa-camera" style="margin-right:7px;"></i>How to Use — ASL Translator</div>
+      <div class="guide-steps">
+        <div class="guide-step"><span class="step-num">1</span><span>Open the <strong>ASL Translator</strong> tab and allow camera access.</span></div>
+        <div class="guide-step"><span class="step-num">2</span><span>Position yourself so your hands are clearly visible in the camera frame. Good lighting helps.</span></div>
+        <div class="guide-step"><span class="step-num">3</span><span>Wait for the status to show <strong>Ready</strong>, then perform one of the 6 supported signs.</span></div>
+        <div class="guide-step"><span class="step-num">4</span><span>Hold the sign steady for about <strong>1 second</strong>. The app will speak the recognized word aloud.</span></div>
+        <div class="guide-step"><span class="step-num">5</span><span>The confidence bars at the bottom show what the AI is detecting in real time.</span></div>
+        <div class="guide-step"><span class="step-num">6</span><span>Lower your hands fully between signs to reset detection.</span></div>
+      </div>
+      <div class="guide-tip"><i class="fa-solid fa-lightbulb" style="margin-right:5px;"></i>Tip: Signs that use two hands (DOCTOR, HELP, PAIN) require both hands to be visible in frame.</div>
+    </div>
+
+    <!-- How to use Communication Board -->
+    <div class="guide-section">
+      <div class="guide-section-title"><i class="fa-solid fa-hand" style="margin-right:7px;"></i>How to Use — Communication Board</div>
+      <div class="guide-steps">
+        <div class="guide-step"><span class="step-num">1</span><span>Open the <strong>Communication Board</strong> tab.</span></div>
+        <div class="guide-step"><span class="step-num">2</span><span>Choose a category from the top row: <strong>Yes/No, Needs, Pain, Comfort,</strong> or <strong>Body</strong>.</span></div>
+        <div class="guide-step"><span class="step-num">3</span><span>Tap any phrase button — the app will speak it aloud immediately through your device speaker.</span></div>
+        <div class="guide-step"><span class="step-num">4</span><span>No camera or sign language knowledge needed. Any patient can use this instantly.</span></div>
+      </div>
+      <div class="guide-tip"><i class="fa-solid fa-lightbulb" style="margin-right:5px;"></i>Tip: Turn your device volume up before handing it to a patient.</div>
+    </div>
+
+    <!-- ASL Sign Reference -->
+    <div class="guide-section-title" style="margin-bottom:0;"><i class="fa-solid fa-signs-post" style="margin-right:7px;"></i>ASL Sign Reference</div>
+    <p style="color:var(--gray);font-size:12px;margin-top:-16px;">Hold each sign clearly in front of the camera. Multiple images indicate a movement sequence.</p>
     <div id="guide-cards"></div>
+
   </div>
 </div>
 
@@ -861,14 +943,54 @@ buildGuide();
 // COMMUNICATION BOARD
 // ══════════════════════════════════════════════
 const PHRASES = {
-  yesno:   ['Yes','No',"I don't know",'Maybe','Please repeat','Thank you'],
-  needs:   ['Water','Food','Medicine','Bathroom','Help','More blankets'],
-  pain:    ["I'm in pain","Pain: 1–3 mild","Pain: 4–6 moderate","Pain: 7–10 severe",
-            'My head hurts','My chest hurts','My stomach hurts','My back hurts'],
-  comfort: ["I'm cold","I'm hot","I'm tired","I'm scared",
-            "I'm nauseous","I'm comfortable","I need to rest","I feel dizzy"],
-  body:    ['Head','Chest','Stomach','Left arm','Right arm',
-            'Left leg','Right leg','Back','Neck','Hip'],
+  yesno:   [
+    {icon:'fa-solid fa-check',         text:'Yes'},
+    {icon:'fa-solid fa-xmark',         text:'No'},
+    {icon:'fa-solid fa-question',      text:"I don't know"},
+    {icon:'fa-solid fa-minus',         text:'Maybe'},
+    {icon:'fa-solid fa-rotate-left',   text:'Please repeat'},
+    {icon:'fa-solid fa-hands-clapping',text:'Thank you'},
+  ],
+  needs:   [
+    {icon:'fa-solid fa-droplet',       text:'Water'},
+    {icon:'fa-solid fa-utensils',      text:'Food'},
+    {icon:'fa-solid fa-pills',         text:'Medicine'},
+    {icon:'fa-solid fa-restroom',      text:'Bathroom'},
+    {icon:'fa-solid fa-bell',          text:'Help'},
+    {icon:'fa-solid fa-bed',           text:'More blankets'},
+  ],
+  pain:    [
+    {icon:'fa-solid fa-face-grimace',        text:"I'm in pain"},
+    {icon:'fa-solid fa-signal',              text:'Pain: 1–3 mild'},
+    {icon:'fa-solid fa-triangle-exclamation',text:'Pain: 4–6 moderate'},
+    {icon:'fa-solid fa-circle-exclamation',  text:'Pain: 7–10 severe'},
+    {icon:'fa-solid fa-head-side-virus',     text:'My head hurts'},
+    {icon:'fa-solid fa-heart-crack',         text:'My chest hurts'},
+    {icon:'fa-solid fa-face-dizzy',          text:'My stomach hurts'},
+    {icon:'fa-solid fa-person',              text:'My back hurts'},
+  ],
+  comfort: [
+    {icon:'fa-solid fa-snowflake',     text:"I'm cold"},
+    {icon:'fa-solid fa-sun',           text:"I'm hot"},
+    {icon:'fa-solid fa-moon',          text:"I'm tired"},
+    {icon:'fa-solid fa-triangle-exclamation', text:"I'm scared"},
+    {icon:'fa-solid fa-face-dizzy',    text:"I'm nauseous"},
+    {icon:'fa-solid fa-face-smile',    text:"I'm comfortable"},
+    {icon:'fa-solid fa-bed',           text:'I need to rest'},
+    {icon:'fa-solid fa-rotate',        text:'I feel dizzy'},
+  ],
+  body:    [
+    {icon:'fa-solid fa-head-side-virus',text:'Head'},
+    {icon:'fa-solid fa-lungs',          text:'Chest'},
+    {icon:'fa-solid fa-circle-dot',     text:'Stomach'},
+    {icon:'fa-solid fa-hand',           text:'Left arm'},
+    {icon:'fa-solid fa-hand',           text:'Right arm'},
+    {icon:'fa-solid fa-person-walking', text:'Left leg'},
+    {icon:'fa-solid fa-person-walking', text:'Right leg'},
+    {icon:'fa-solid fa-person',         text:'Back'},
+    {icon:'fa-solid fa-head-side',      text:'Neck'},
+    {icon:'fa-solid fa-circle',         text:'Hip'},
+  ],
 };
 
 function showCat(cat, btn) {
@@ -876,7 +998,9 @@ function showCat(cat, btn) {
   btn.classList.add('active');
   const grid = document.getElementById('phrase-container');
   grid.innerHTML = PHRASES[cat].map(p =>
-    `<button class="phrase-btn" onclick="sayPhrase(this,'${p.replace(/'/g,"\\'")}')">${p}</button>`
+    `<button class="phrase-btn" onclick="sayPhrase(this,'${p.text.replace(/'/g,"\\'")}')">` +
+    `<i class="${p.icon} phrase-icon"></i>` +
+    `<span class="phrase-text">${p.text}</span></button>`
   ).join('');
 }
 
