@@ -373,7 +373,7 @@
 <div id="speaking-banner"></div>
 
 <!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/holistic.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
 
@@ -396,13 +396,14 @@ const MODEL_URL    = './tfjs_model/model.json';
 // STATE
 // ══════════════════════════════════════════════
 let model       = null;
-let frameBuffer = [];          // up to SEQ_LEN Float32Arrays
-let predHistory = [];          // last MAJORITY_WIN predictions
-let streak      = [];          // last STREAK_REQ predictions
+let frameBuffer = [];
+let predHistory = [];
+let streak      = [];
 let lastEmitted = null;
 let latestConf  = new Array(CLASSES.length).fill(0);
-let holistic    = null;
+let hands       = null;
 let camRunning  = false;
+let lastHandsResult = null;  // for two-handed gate
 
 const video         = document.getElementById('video');
 const outCanvas     = document.getElementById('output-canvas');
@@ -442,33 +443,28 @@ function updateBars(probs) {
 
 // ══════════════════════════════════════════════
 // FEATURE EXTRACTION
-// Matches collect_data.py exactly:
-//   left_hand (63) + right_hand (63) + pose[11-16] (18)
-// Frame is flipped before MediaPipe → left/right match training
+// @mediapipe/hands returns multiHandLandmarks + multiHandedness.
+// Frame is flipped before MediaPipe so label 'Left' = training's
+// left_hand_landmarks (= user's right hand after flip).
+// Body pose (slots 126-143) set to zeros — hands carry most signal.
 // ══════════════════════════════════════════════
 function extractFeatures(results) {
-  const f = new Float32Array(144);
-  let i = 0;
+  const f = new Float32Array(144);  // zero-initialized
+  let leftLm = null, rightLm = null;
 
-  if (results.leftHandLandmarks) {
-    for (const lm of results.leftHandLandmarks) {
-      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
-    }
-  } else { i += 63; }
-
-  if (results.rightHandLandmarks) {
-    for (const lm of results.rightHandLandmarks) {
-      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
-    }
-  } else { i += 63; }
-
-  const poseIdx = [11,12,13,14,15,16];
-  if (results.poseLandmarks) {
-    for (const idx of poseIdx) {
-      const lm = results.poseLandmarks[idx];
-      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
-    }
+  if (results.multiHandLandmarks) {
+    results.multiHandLandmarks.forEach((lms, i) => {
+      const label = results.multiHandedness[i].classification[0].label;
+      if (label === 'Left')  leftLm  = lms;
+      if (label === 'Right') rightLm = lms;
+    });
   }
+
+  let idx = 0;
+  if (leftLm)  { for (const lm of leftLm)  { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; } }
+  else { idx += 63; }
+  if (rightLm) { for (const lm of rightLm) { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; } }
+  // body pose: stays zero (idx 126-143)
   return f;
 }
 
@@ -523,10 +519,9 @@ async function maybeInfer(results) {
     const topWord = CLASSES[topIdx];
 
     // Two-handed gate
-    if (TWO_HAND.has(topWord)) {
-      if (!results.leftHandLandmarks || !results.rightHandLandmarks) {
-        inferring = false; return;
-      }
+    if (TWO_HAND.has(topWord) && lastHandsResult) {
+      const count = (lastHandsResult.multiHandLandmarks || []).length;
+      if (count < 2) { inferring = false; return; }
     }
 
     const emitted = smootherUpdate(topWord, topConf);
@@ -548,34 +543,33 @@ function showPrediction(word, conf) {
 }
 
 // ══════════════════════════════════════════════
-// MEDIAPIPE HOLISTIC RESULTS CALLBACK
+// MEDIAPIPE HANDS RESULTS CALLBACK
 // ══════════════════════════════════════════════
+const HC = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+
 function onResults(results) {
+  lastHandsResult = results;
   const w = outCanvas.width, h = outCanvas.height;
-
-  // Clear landmark overlay then draw landmarks (video is shown by the <video> element)
   outCtx.clearRect(0, 0, w, h);
-  if (results.leftHandLandmarks) {
-    drawConnectors(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
-      HAND_CONNECTIONS, {color:'#00FF88', lineWidth:2});
-    drawLandmarks(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
-      {color:'#00FF88', lineWidth:1, radius:3});
-  }
-  if (results.rightHandLandmarks) {
-    drawConnectors(outCtx, mirrorLandmarks(results.rightHandLandmarks, w),
-      HAND_CONNECTIONS, {color:'#00D4FF', lineWidth:2});
-    drawLandmarks(outCtx, mirrorLandmarks(results.rightHandLandmarks, w),
-      {color:'#00D4FF', lineWidth:1, radius:3});
-  }
 
-  // Update hands chip
-  const handsDetected = results.leftHandLandmarks || results.rightHandLandmarks;
-  handsChip.textContent = handsDetected
-    ? (results.leftHandLandmarks && results.rightHandLandmarks ? '2 hands' : '1 hand')
-    : 'No hands';
-  handsChip.className = 'hands-chip' + (handsDetected ? ' detected' : '');
+  const colors = ['#00FF88','#00D4FF'];
+  (results.multiHandLandmarks || []).forEach((lms, i) => {
+    const col = colors[i % 2];
+    // procCanvas and CSS-mirrored video are the same flip → draw at raw x,y
+    drawConnectors(outCtx, lms, HC, {color: col, lineWidth: 2});
+    drawLandmarks(outCtx, lms, {color: col, lineWidth: 1, radius: 3});
+  });
 
-  // Build frame feature
+  const n = (results.multiHandLandmarks || []).length;
+  handsChip.textContent = n === 0 ? 'No hands' : n === 1 ? '1 hand' : '2 hands';
+  handsChip.className   = 'hands-chip' + (n > 0 ? ' detected' : '');
+
   const features = extractFeatures(results);
   frameBuffer.push(features);
   if (frameBuffer.length > SEQ_LEN) frameBuffer.shift();
@@ -587,24 +581,6 @@ function onResults(results) {
     statusChip.textContent = `Buffering ${frameBuffer.length}/${SEQ_LEN}`;
   }
 }
-
-// Mirror landmark x coordinates for display (since we draw canvas mirrored)
-function mirrorLandmarks(lms, canvasWidth) {
-  return lms.map(lm => ({
-    x: 1 - lm.x,
-    y: lm.y,
-    z: lm.z
-  }));
-}
-
-// Dummy HAND_CONNECTIONS in case drawing_utils loads it under different name
-const HAND_CONNECTIONS = window.HAND_CONNECTIONS || [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [5,9],[9,10],[10,11],[11,12],
-  [9,13],[13,14],[14,15],[15,16],
-  [13,17],[17,18],[18,19],[19,20],[0,17]
-];
 
 // ══════════════════════════════════════════════
 // CAMERA + MEDIAPIPE INIT
@@ -647,27 +623,27 @@ async function sendFrame() {
     procCtx.drawImage(video, -w, 0, w, h);
     procCtx.restore();
 
-    if (holistic) {
-      try { await holistic.send({ image: procCanvas }); } catch(e) { console.warn(e); }
+    if (hands) {
+      try { await hands.send({ image: procCanvas }); } catch(e) { console.warn(e); }
     }
   }
 
   requestAnimationFrame(sendFrame);
 }
 
-async function initHolistic() {
-  holistic = new Holistic({
+async function initHands() {
+  hands = new Hands({
     locateFile: file =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/${file}`
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`
   });
-  holistic.setOptions({
+  hands.setOptions({
+    maxNumHands: 2,
     modelComplexity: 1,
-    smoothLandmarks: true,
     minDetectionConfidence: 0.7,
     minTrackingConfidence:  0.7
   });
-  holistic.onResults(onResults);
-  await holistic.initialize();
+  hands.onResults(onResults);
+  await hands.initialize();
 }
 
 // ══════════════════════════════════════════════
@@ -691,7 +667,7 @@ async function startup() {
     }
 
     loadStatus.textContent = 'Loading hand detector…';
-    await initHolistic();
+    await initHands();
 
     loadOverlay.classList.add('hidden');
     statusChip.textContent = 'Ready';
