@@ -379,7 +379,7 @@
 <div id="speaking-banner"></div>
 
 <!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/holistic.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
 
@@ -407,9 +407,9 @@ let predHistory = [];
 let streak      = [];
 let lastEmitted = null;
 let latestConf  = new Array(CLASSES.length).fill(0);
-let hands       = null;
+let holistic    = null;
 let camRunning  = false;
-let lastHandsResult = null;  // for two-handed gate
+let lastResult  = null;
 
 const video         = document.getElementById('video');
 const outCanvas     = document.getElementById('output-canvas');
@@ -449,28 +449,29 @@ function updateBars(probs) {
 
 // ══════════════════════════════════════════════
 // FEATURE EXTRACTION
-// @mediapipe/hands returns multiHandLandmarks + multiHandedness.
-// Frame is flipped before MediaPipe so label 'Left' = training's
-// left_hand_landmarks (= user's right hand after flip).
-// Body pose (slots 126-143) set to zeros — hands carry most signal.
+// Matches collect_data.py: left_hand(63) + right_hand(63) + pose[11-16](18)
+// Frame is flipped before Holistic → handedness matches training.
 // ══════════════════════════════════════════════
 function extractFeatures(results) {
-  const f = new Float32Array(144);  // zero-initialized
-  let leftLm = null, rightLm = null;
-
-  if (results.multiHandLandmarks) {
-    results.multiHandLandmarks.forEach((lms, i) => {
-      const label = results.multiHandedness[i].classification[0].label;
-      if (label === 'Left')  leftLm  = lms;
-      if (label === 'Right') rightLm = lms;
-    });
-  }
-
+  const f = new Float32Array(144);
   let idx = 0;
-  if (leftLm)  { for (const lm of leftLm)  { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; } }
-  else { idx += 63; }
-  if (rightLm) { for (const lm of rightLm) { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; } }
-  // body pose: stays zero (idx 126-143)
+
+  if (results.leftHandLandmarks) {
+    for (const lm of results.leftHandLandmarks)
+      { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; }
+  } else { idx += 63; }
+
+  if (results.rightHandLandmarks) {
+    for (const lm of results.rightHandLandmarks)
+      { f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z; }
+  } else { idx += 63; }
+
+  if (results.poseLandmarks) {
+    for (const i of [11,12,13,14,15,16]) {
+      const lm = results.poseLandmarks[i];
+      f[idx++]=lm.x; f[idx++]=lm.y; f[idx++]=lm.z;
+    }
+  }
   return f;
 }
 
@@ -530,9 +531,9 @@ async function maybeInfer(results) {
     const topWord = CLASSES[topIdx];
 
     // Two-handed gate
-    if (TWO_HAND.has(topWord) && lastHandsResult) {
-      const count = (lastHandsResult.multiHandLandmarks || []).length;
-      if (count < 2) { inferring = false; return; }
+    if (TWO_HAND.has(topWord) && lastResult) {
+      if (!lastResult.leftHandLandmarks || !lastResult.rightHandLandmarks)
+        { inferring = false; return; }
     }
 
     const emitted = smootherUpdate(topWord, topConf);
@@ -566,30 +567,31 @@ const HC = [
 
 let resultsCallCount = 0;
 function onResults(results) {
-  lastHandsResult = results;
+  lastResult = results;
   resultsCallCount++;
   document.getElementById('dbg-results').textContent = `onResults: called ${resultsCallCount}x`;
 
   const w = outCanvas.width, h = outCanvas.height;
   outCtx.clearRect(0, 0, w, h);
 
-  const colors = ['#00FF88','#00D4FF'];
-  (results.multiHandLandmarks || []).forEach((lms, i) => {
-    const col = colors[i % 2];
-    drawConnectors(outCtx, lms, HC, {color: col, lineWidth: 2});
-    drawLandmarks(outCtx, lms, {color: col, lineWidth: 1, radius: 3});
-  });
+  if (results.leftHandLandmarks) {
+    drawConnectors(outCtx, results.leftHandLandmarks,  HC, {color:'#00FF88', lineWidth:2});
+    drawLandmarks (outCtx, results.leftHandLandmarks,      {color:'#00FF88', lineWidth:1, radius:3});
+  }
+  if (results.rightHandLandmarks) {
+    drawConnectors(outCtx, results.rightHandLandmarks, HC, {color:'#00D4FF', lineWidth:2});
+    drawLandmarks (outCtx, results.rightHandLandmarks,     {color:'#00D4FF', lineWidth:1, radius:3});
+  }
 
-  const n = (results.multiHandLandmarks || []).length;
+  const n = (results.leftHandLandmarks ? 1 : 0) + (results.rightHandLandmarks ? 1 : 0);
   handsChip.textContent = n === 0 ? 'No hands' : n === 1 ? '1 hand' : '2 hands';
   handsChip.className   = 'hands-chip' + (n > 0 ? ' detected' : '');
   document.getElementById('dbg-hands').textContent =
-    `Hands: ${n} detected | handedness: ${(results.multiHandedness||[]).map(h=>h.classification[0].label).join(', ')||'—'}`;
+    `Hands: L=${!!results.leftHandLandmarks} R=${!!results.rightHandLandmarks}`;
 
   const features = extractFeatures(results);
   frameBuffer.push(features);
   if (frameBuffer.length > SEQ_LEN) frameBuffer.shift();
-
   document.getElementById('dbg-buffer').textContent = `Buffer: ${frameBuffer.length} / ${SEQ_LEN}`;
 
   if (frameBuffer.length === SEQ_LEN) {
@@ -642,7 +644,7 @@ async function sendFrame() {
     procCtx.restore();
 
     if (hands) {
-      try { await hands.send({ image: procCanvas }); } catch(e) { console.warn(e); }
+      try { await holistic.send({ image: procCanvas }); } catch(e) {}
     }
   }
 
@@ -650,19 +652,18 @@ async function sendFrame() {
 }
 
 async function initHands() {
-  hands = new Hands({
+  holistic = new Holistic({
     locateFile: file =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`
+      `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/${file}`
   });
-  hands.setOptions({
-    maxNumHands: 2,
+  holistic.setOptions({
     modelComplexity: 1,
+    smoothLandmarks: true,
     minDetectionConfidence: 0.5,
     minTrackingConfidence:  0.5
   });
-  hands.onResults(onResults);
-  // Don't call initialize() — let it init lazily on first send()
-  // Avoids the Module.arguments WASM abort on some browsers
+  holistic.onResults(onResults);
+  // No initialize() call — lazy init on first send() avoids WASM abort
 }
 
 // ══════════════════════════════════════════════
