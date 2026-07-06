@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Medivoice — Live Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy:  #0D2B55;
+    --blue:  #146EB4;
+    --teal:  #00B4D8;
+    --light: #D9EEF7;
+    --gray:  #55657A;
+    --white: #FFFFFF;
+    --green: #00A878;
+    --red:   #E63946;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--navy);
+    color: var(--white);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--navy);
+    border-bottom: 2px solid var(--blue);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+  header span { font-size: 13px; color: var(--teal); }
+
+  /* ── Tab bar ── */
+  .tabs {
+    display: flex;
+    background: #0a2040;
+    border-bottom: 1px solid var(--blue);
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 14px 10px;
+    background: none;
+    border: none;
+    color: var(--gray);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  .tab-btn.active {
+    color: var(--teal);
+    border-bottom-color: var(--teal);
+    background: rgba(0,180,216,0.08);
+  }
+
+  /* ── Panels ── */
+  .panel { display: none; flex: 1; flex-direction: column; }
+  .panel.active { display: flex; }
+
+  /* ════════════════════════════════════════════
+     ASL PANEL
+  ════════════════════════════════════════════ */
+  #asl-panel { background: #0a1a30; }
+
+  .camera-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    aspect-ratio: 4/3;
+    background: #000;
+    overflow: hidden;
+  }
+  #output-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #video { display: none; }
+  #process-canvas { display: none; }
+
+  .camera-overlay {
+    position: absolute;
+    top: 10px; left: 10px; right: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  .status-chip {
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--blue);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--teal);
+  }
+  .hands-chip {
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--gray);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--gray);
+  }
+  .hands-chip.detected { border-color: var(--green); color: var(--green); }
+
+  /* Prediction box */
+  .prediction-box {
+    background: var(--navy);
+    padding: 20px 24px 16px;
+    text-align: center;
+    border-bottom: 1px solid #1a3a60;
+  }
+  #predicted-word {
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--teal);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    min-height: 64px;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+  #predicted-word.flash {
+    animation: flash 0.4s ease;
+  }
+  @keyframes flash {
+    0%   { color: var(--white); transform: scale(1.05); }
+    100% { color: var(--teal);  transform: scale(1); }
+  }
+  #confidence-label {
+    font-size: 13px;
+    color: var(--gray);
+    margin-top: 4px;
+  }
+
+  /* Confidence bars */
+  .conf-bars {
+    padding: 12px 20px;
+    background: #0a1a30;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .conf-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .conf-label {
+    width: 60px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray);
+    text-align: right;
+  }
+  .conf-track {
+    flex: 1;
+    height: 8px;
+    background: #1a3050;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .conf-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--blue);
+    width: 0%;
+    transition: width 0.15s ease;
+  }
+  .conf-fill.top { background: var(--teal); }
+  .conf-pct {
+    width: 36px;
+    font-size: 11px;
+    color: var(--gray);
+    text-align: right;
+  }
+
+  /* Instructions */
+  .asl-instructions {
+    padding: 10px 20px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--gray);
+    background: #0a1a30;
+    border-top: 1px solid #1a3a60;
+    flex: 1;
+  }
+
+  /* ════════════════════════════════════════════
+     COMMUNICATION BOARD PANEL
+  ════════════════════════════════════════════ */
+  #board-panel { background: var(--navy); overflow-y: auto; }
+
+  .cat-tabs {
+    display: flex;
+    overflow-x: auto;
+    background: #0a2040;
+    border-bottom: 1px solid var(--blue);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .cat-tabs::-webkit-scrollbar { display: none; }
+  .cat-btn {
+    flex: 0 0 auto;
+    padding: 12px 18px;
+    background: none;
+    border: none;
+    color: var(--gray);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .cat-btn.active {
+    color: var(--teal);
+    border-bottom-color: var(--teal);
+  }
+
+  .phrase-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 16px;
+  }
+  .phrase-btn {
+    background: #1a3a60;
+    border: 1px solid var(--blue);
+    border-radius: 12px;
+    color: var(--white);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 20px 14px;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.3;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .phrase-btn:active, .phrase-btn.speaking {
+    background: var(--blue);
+    border-color: var(--teal);
+    transform: scale(0.97);
+  }
+
+  /* Speaking banner */
+  #speaking-banner {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--blue);
+    color: var(--white);
+    text-align: center;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    z-index: 100;
+  }
+  #speaking-banner.visible { transform: translateY(0); }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(13,43,85,0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 999;
+  }
+  #loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 48px; height: 48px;
+    border: 4px solid #1a3a60;
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #load-status { color: var(--teal); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="load-status">Loading ASL model…</p>
+</div>
+
+<!-- Header -->
+<header>
+  <h1>MEDIVOICE</h1>
+  <span>Giving a Voice to the Voiceless</span>
+</header>
+
+<!-- Tab bar -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('asl')">👁 ASL Translator</button>
+  <button class="tab-btn" onclick="switchTab('board')">🤚 Communication Board</button>
+</div>
+
+<!-- ══ ASL PANEL ══ -->
+<div id="asl-panel" class="panel active">
+  <div class="camera-wrapper">
+    <canvas id="output-canvas"></canvas>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="process-canvas"></canvas>
+    <div class="camera-overlay">
+      <div class="status-chip" id="status-chip">Initializing…</div>
+      <div class="hands-chip" id="hands-chip">No hands</div>
+    </div>
+  </div>
+
+  <div class="prediction-box">
+    <div id="predicted-word">—</div>
+    <div id="confidence-label">Waiting for sign…</div>
+  </div>
+
+  <div class="conf-bars" id="conf-bars"></div>
+
+  <div class="asl-instructions">
+    Face the camera · Sign clearly · Hold the sign for ~1 second
+    <br>Supported: DOCTOR · HELP · NO · PAIN · WATER · YES
+  </div>
+</div>
+
+<!-- ══ BOARD PANEL ══ -->
+<div id="board-panel" class="panel">
+  <div class="cat-tabs">
+    <button class="cat-btn active" onclick="showCat('yesno', this)">Yes / No</button>
+    <button class="cat-btn" onclick="showCat('needs', this)">Needs</button>
+    <button class="cat-btn" onclick="showCat('pain', this)">Pain</button>
+    <button class="cat-btn" onclick="showCat('comfort', this)">Comfort</button>
+    <button class="cat-btn" onclick="showCat('body', this)">Body</button>
+  </div>
+
+  <div id="phrase-container" class="phrase-grid"></div>
+</div>
+
+<!-- Speaking banner -->
+<div id="speaking-banner"></div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+const CLASSES      = ['doctor','help','no','pain','water','yes'];
+const SEQ_LEN      = 30;
+const CONF_THRESH  = 0.55;
+const MAJORITY_WIN = 20;
+const MAJORITY_REQ = 0.70;
+const STREAK_REQ   = 5;
+// Two-handed signs
+const TWO_HAND     = new Set(['pain','help','doctor']);
+// Model path (relative — place tfjs_model/ next to index.html)
+const MODEL_URL    = './tfjs_model/model.json';
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let model       = null;
+let frameBuffer = [];          // up to SEQ_LEN Float32Arrays
+let predHistory = [];          // last MAJORITY_WIN predictions
+let streak      = [];          // last STREAK_REQ predictions
+let lastEmitted = null;
+let latestConf  = new Array(CLASSES.length).fill(0);
+let holistic    = null;
+let camRunning  = false;
+
+const video         = document.getElementById('video');
+const outCanvas     = document.getElementById('output-canvas');
+const procCanvas    = document.getElementById('process-canvas');
+const outCtx        = outCanvas.getContext('2d');
+const procCtx       = procCanvas.getContext('2d');
+const predWord      = document.getElementById('predicted-word');
+const confLabel     = document.getElementById('confidence-label');
+const statusChip    = document.getElementById('status-chip');
+const handsChip     = document.getElementById('hands-chip');
+const loadOverlay   = document.getElementById('loading-overlay');
+const loadStatus    = document.getElementById('load-status');
+
+// ══════════════════════════════════════════════
+// CONFIDENCE BAR UI
+// ══════════════════════════════════════════════
+const confBarsEl = document.getElementById('conf-bars');
+CLASSES.forEach(word => {
+  confBarsEl.innerHTML += `
+    <div class="conf-row">
+      <div class="conf-label">${word}</div>
+      <div class="conf-track"><div class="conf-fill" id="fill-${word}"></div></div>
+      <div class="conf-pct" id="pct-${word}">0%</div>
+    </div>`;
+});
+
+function updateBars(probs) {
+  const topIdx = probs.indexOf(Math.max(...probs));
+  CLASSES.forEach((w, i) => {
+    const pct  = (probs[i] * 100).toFixed(0);
+    const fill = document.getElementById(`fill-${w}`);
+    fill.style.width = pct + '%';
+    fill.className   = 'conf-fill' + (i === topIdx ? ' top' : '');
+    document.getElementById(`pct-${w}`).textContent = pct + '%';
+  });
+}
+
+// ══════════════════════════════════════════════
+// FEATURE EXTRACTION
+// Matches collect_data.py exactly:
+//   left_hand (63) + right_hand (63) + pose[11-16] (18)
+// Frame is flipped before MediaPipe → left/right match training
+// ══════════════════════════════════════════════
+function extractFeatures(results) {
+  const f = new Float32Array(144);
+  let i = 0;
+
+  if (results.leftHandLandmarks) {
+    for (const lm of results.leftHandLandmarks) {
+      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
+    }
+  } else { i += 63; }
+
+  if (results.rightHandLandmarks) {
+    for (const lm of results.rightHandLandmarks) {
+      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
+    }
+  } else { i += 63; }
+
+  const poseIdx = [11,12,13,14,15,16];
+  if (results.poseLandmarks) {
+    for (const idx of poseIdx) {
+      const lm = results.poseLandmarks[idx];
+      f[i++] = lm.x; f[i++] = lm.y; f[i++] = lm.z;
+    }
+  }
+  return f;
+}
+
+// ══════════════════════════════════════════════
+// SMOOTHING
+// ══════════════════════════════════════════════
+function smootherUpdate(pred, conf) {
+  if (conf < CONF_THRESH) return null;
+
+  predHistory.push(pred);
+  if (predHistory.length > MAJORITY_WIN) predHistory.shift();
+
+  streak.push(pred);
+  if (streak.length > STREAK_REQ) streak.shift();
+
+  if (streak.length < STREAK_REQ) return null;
+  if (!streak.every(p => p === pred)) return null;
+  if (predHistory.length < MAJORITY_WIN) return null;
+
+  const count = predHistory.filter(p => p === pred).length;
+  if (count / MAJORITY_WIN < MAJORITY_REQ) return null;
+
+  if (pred === lastEmitted) return null;
+  lastEmitted = pred;
+  return pred;
+}
+
+function resetSmoother() {
+  predHistory = [];
+  streak      = [];
+  lastEmitted = null;
+}
+
+// ══════════════════════════════════════════════
+// INFERENCE
+// ══════════════════════════════════════════════
+let inferring = false;
+async function maybeInfer(results) {
+  if (!model || inferring) return;
+  inferring = true;
+  try {
+    const input = tf.tensor3d([frameBuffer], [1, SEQ_LEN, 144]);
+    const output = model.predict(input);
+    const probs  = Array.from(await output.data());
+    input.dispose(); output.dispose();
+
+    latestConf = probs;
+    updateBars(probs);
+
+    const topIdx  = probs.indexOf(Math.max(...probs));
+    const topConf = probs[topIdx];
+    const topWord = CLASSES[topIdx];
+
+    // Two-handed gate
+    if (TWO_HAND.has(topWord)) {
+      if (!results.leftHandLandmarks || !results.rightHandLandmarks) {
+        inferring = false; return;
+      }
+    }
+
+    const emitted = smootherUpdate(topWord, topConf);
+    if (emitted) {
+      showPrediction(emitted, topConf);
+    }
+  } finally {
+    inferring = false;
+  }
+}
+
+function showPrediction(word, conf) {
+  predWord.textContent = word.toUpperCase();
+  predWord.classList.remove('flash');
+  void predWord.offsetWidth;
+  predWord.classList.add('flash');
+  confLabel.textContent = `Confidence: ${(conf * 100).toFixed(0)}%`;
+  speak(word);
+}
+
+// ══════════════════════════════════════════════
+// MEDIAPIPE HOLISTIC RESULTS CALLBACK
+// ══════════════════════════════════════════════
+function onResults(results) {
+  const w = outCanvas.width, h = outCanvas.height;
+
+  // Draw mirrored camera frame to display canvas
+  outCtx.clearRect(0, 0, w, h);
+  outCtx.save();
+  outCtx.scale(-1, 1);
+  outCtx.drawImage(results.image, -w, 0, w, h);
+  outCtx.restore();
+
+  // Draw landmarks
+  if (results.leftHandLandmarks) {
+    drawConnectors(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
+      HAND_CONNECTIONS, {color:'#00FF88', lineWidth:2});
+    drawLandmarks(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
+      {color:'#00FF88', lineWidth:1, radius:3});
+  }
+  if (results.rightHandLandmarks) {
+    drawConnectors(outCtx, mirrorLandmarks(results.rightHandLandmarks, w),
+      HAND_CONNECTIONS, {color:'#00D4FF', lineWidth:2});
+    drawLandmarks(outCtx, mirrorLandmarks(results.rightHandLandmarks, w),
+      {color:'#00D4FF', lineWidth:1, radius:3});
+  }
+
+  // Update hands chip
+  const handsDetected = results.leftHandLandmarks || results.rightHandLandmarks;
+  handsChip.textContent = handsDetected
+    ? (results.leftHandLandmarks && results.rightHandLandmarks ? '2 hands' : '1 hand')
+    : 'No hands';
+  handsChip.className = 'hands-chip' + (handsDetected ? ' detected' : '');
+
+  // Build frame feature
+  const features = extractFeatures(results);
+  frameBuffer.push(features);
+  if (frameBuffer.length > SEQ_LEN) frameBuffer.shift();
+
+  if (frameBuffer.length === SEQ_LEN) {
+    statusChip.textContent = 'Recognizing…';
+    maybeInfer(results);
+  } else {
+    statusChip.textContent = `Buffering ${frameBuffer.length}/${SEQ_LEN}`;
+  }
+}
+
+// Mirror landmark x coordinates for display (since we draw canvas mirrored)
+function mirrorLandmarks(lms, canvasWidth) {
+  return lms.map(lm => ({
+    x: 1 - lm.x,
+    y: lm.y,
+    z: lm.z
+  }));
+}
+
+// Dummy HAND_CONNECTIONS in case drawing_utils loads it under different name
+const HAND_CONNECTIONS = window.HAND_CONNECTIONS || [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+
+// ══════════════════════════════════════════════
+// CAMERA + MEDIAPIPE INIT
+// ══════════════════════════════════════════════
+async function initCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: 640, height: 480 },
+    audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
+
+  outCanvas.width  = video.videoWidth  || 640;
+  outCanvas.height = video.videoHeight || 480;
+  procCanvas.width  = outCanvas.width;
+  procCanvas.height = outCanvas.height;
+
+  camRunning = true;
+  requestAnimationFrame(sendFrame);
+}
+
+async function sendFrame() {
+  if (!camRunning || video.readyState < 2) {
+    requestAnimationFrame(sendFrame);
+    return;
+  }
+  const w = procCanvas.width, h = procCanvas.height;
+
+  // Draw flipped frame to processing canvas (matches cv2.flip in training)
+  procCtx.save();
+  procCtx.scale(-1, 1);
+  procCtx.drawImage(video, -w, 0, w, h);
+  procCtx.restore();
+
+  await holistic.send({ image: procCanvas });
+  requestAnimationFrame(sendFrame);
+}
+
+async function initHolistic() {
+  holistic = new Holistic({
+    locateFile: file =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+  });
+  holistic.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence:  0.7
+  });
+  holistic.onResults(onResults);
+  await holistic.initialize();
+}
+
+// ══════════════════════════════════════════════
+// STARTUP
+// ══════════════════════════════════════════════
+async function startup() {
+  try {
+    loadStatus.textContent = 'Loading ASL model…';
+    model = await tf.loadLayersModel(MODEL_URL);
+    // Warm up
+    const dummy = tf.zeros([1, SEQ_LEN, 144]);
+    model.predict(dummy).dispose();
+    dummy.dispose();
+
+    loadStatus.textContent = 'Starting camera…';
+    await initCamera();
+
+    loadStatus.textContent = 'Loading hand detector…';
+    await initHolistic();
+
+    loadOverlay.classList.add('hidden');
+    statusChip.textContent = 'Ready';
+  } catch (err) {
+    loadStatus.textContent = '⚠ ' + err.message;
+    console.error(err);
+  }
+}
+
+startup();
+
+// ══════════════════════════════════════════════
+// TAB SWITCHING
+// ══════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', (name==='asl'?0:1)===i));
+  document.getElementById('asl-panel').classList.toggle('active', name==='asl');
+  document.getElementById('board-panel').classList.toggle('active', name==='board');
+}
+
+// ══════════════════════════════════════════════
+// COMMUNICATION BOARD
+// ══════════════════════════════════════════════
+const PHRASES = {
+  yesno:   ['Yes','No',"I don't know",'Maybe','Please repeat','Thank you'],
+  needs:   ['Water','Food','Medicine','Bathroom','Help','More blankets'],
+  pain:    ["I'm in pain","Pain: 1–3 mild","Pain: 4–6 moderate","Pain: 7–10 severe",
+            'My head hurts','My chest hurts','My stomach hurts','My back hurts'],
+  comfort: ["I'm cold","I'm hot","I'm tired","I'm scared",
+            "I'm nauseous","I'm comfortable","I need to rest","I feel dizzy"],
+  body:    ['Head','Chest','Stomach','Left arm','Right arm',
+            'Left leg','Right leg','Back','Neck','Hip'],
+};
+
+function showCat(cat, btn) {
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const grid = document.getElementById('phrase-container');
+  grid.innerHTML = PHRASES[cat].map(p =>
+    `<button class="phrase-btn" onclick="sayPhrase(this,'${p.replace(/'/g,"\\'")}')">${p}</button>`
+  ).join('');
+}
+
+// Init first category
+showCat('yesno', document.querySelector('.cat-btn'));
+
+let speakTimer = null;
+function sayPhrase(btn, phrase) {
+  // Visual feedback
+  document.querySelectorAll('.phrase-btn').forEach(b => b.classList.remove('speaking'));
+  btn.classList.add('speaking');
+
+  // Show banner
+  const banner = document.getElementById('speaking-banner');
+  banner.textContent = '🔊 ' + phrase;
+  banner.classList.add('visible');
+  clearTimeout(speakTimer);
+  speakTimer = setTimeout(() => {
+    banner.classList.remove('visible');
+    btn.classList.remove('speaking');
+  }, 2500);
+
+  speak(phrase);
+}
+
+// ══════════════════════════════════════════════
+// SPEECH
+// ══════════════════════════════════════════════
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const utt  = new SpeechSynthesisUtterance(text);
+  utt.rate   = 0.9;
+  utt.volume = 1.0;
+  speechSynthesis.speak(utt);
+}
+</script>
+</body>
+</html>
