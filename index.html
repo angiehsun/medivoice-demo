@@ -81,14 +81,27 @@
     background: #000;
     overflow: hidden;
   }
-  #output-canvas {
+  /* Video visible, CSS-mirrored so it looks like a selfie */
+  #video {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+    transform: scaleX(-1);
   }
-  #video { display: none; }
-  #process-canvas { display: none; }
+  /* Transparent canvas overlaid on video for landmarks only */
+  #output-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  /* Off-screen (not display:none) so MediaPipe can read it */
+  #process-canvas {
+    position: fixed;
+    left: -9999px; top: -9999px;
+    width: 640px; height: 480px;
+  }
 
   .camera-overlay {
     position: absolute;
@@ -321,8 +334,8 @@
 <!-- ══ ASL PANEL ══ -->
 <div id="asl-panel" class="panel active">
   <div class="camera-wrapper">
-    <canvas id="output-canvas"></canvas>
     <video id="video" autoplay playsinline muted></video>
+    <canvas id="output-canvas"></canvas>
     <canvas id="process-canvas"></canvas>
     <div class="camera-overlay">
       <div class="status-chip" id="status-chip">Initializing…</div>
@@ -540,7 +553,8 @@ function showPrediction(word, conf) {
 function onResults(results) {
   const w = outCanvas.width, h = outCanvas.height;
 
-  // Camera is already drawn by sendFrame — just draw landmarks on top
+  // Clear landmark overlay then draw landmarks (video is shown by the <video> element)
+  outCtx.clearRect(0, 0, w, h);
   if (results.leftHandLandmarks) {
     drawConnectors(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
       HAND_CONNECTIONS, {color:'#00FF88', lineWidth:2});
@@ -601,12 +615,21 @@ async function initCamera() {
     audio: false
   });
   video.srcObject = stream;
-  await video.play();
 
-  outCanvas.width  = video.videoWidth  || 640;
-  outCanvas.height = video.videoHeight || 480;
-  procCanvas.width  = outCanvas.width;
-  procCanvas.height = outCanvas.height;
+  // Wait for video dimensions to be known
+  await new Promise(resolve => {
+    video.onloadedmetadata = () => {
+      video.play();
+      resolve();
+    };
+  });
+
+  const w = video.videoWidth  || 640;
+  const h = video.videoHeight || 480;
+  outCanvas.width  = w;
+  outCanvas.height = h;
+  procCanvas.width  = w;
+  procCanvas.height = h;
 
   camRunning = true;
   requestAnimationFrame(sendFrame);
@@ -615,23 +638,17 @@ async function initCamera() {
 async function sendFrame() {
   if (!camRunning) { requestAnimationFrame(sendFrame); return; }
 
-  const w = outCanvas.width, h = outCanvas.height;
-
   if (video.readyState >= 2) {
-    // Always draw mirrored camera to display canvas so it's never black
-    outCtx.save();
-    outCtx.scale(-1, 1);
-    outCtx.drawImage(video, -w, 0, w, h);
-    outCtx.restore();
+    const w = procCanvas.width, h = procCanvas.height;
 
-    // Also draw flipped frame to processing canvas for holistic
+    // Draw flipped video to off-screen canvas for MediaPipe (matches training flip)
     procCtx.save();
     procCtx.scale(-1, 1);
     procCtx.drawImage(video, -w, 0, w, h);
     procCtx.restore();
 
     if (holistic) {
-      try { await holistic.send({ image: procCanvas }); } catch(e) {}
+      try { await holistic.send({ image: procCanvas }); } catch(e) { console.warn(e); }
     }
   }
 
