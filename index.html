@@ -354,6 +354,12 @@
     Face the camera · Sign clearly · Hold the sign for ~1 second
     <br>Supported: DOCTOR · HELP · NO · PAIN · WATER · YES
   </div>
+  <div id="debug-box" style="background:#0a1020;color:#00ff88;font-family:monospace;font-size:12px;padding:10px 16px;border-top:1px solid #1a3a60;">
+    <div id="dbg-results">onResults: waiting…</div>
+    <div id="dbg-hands">Hands: —</div>
+    <div id="dbg-buffer">Buffer: 0 / 30</div>
+    <div id="dbg-infer">Inference: —</div>
+  </div>
 </div>
 
 <!-- ══ BOARD PANEL ══ -->
@@ -383,10 +389,10 @@
 // ══════════════════════════════════════════════
 const CLASSES      = ['doctor','help','no','pain','water','yes'];
 const SEQ_LEN      = 30;
-const CONF_THRESH  = 0.55;
-const MAJORITY_WIN = 20;
-const MAJORITY_REQ = 0.70;
-const STREAK_REQ   = 5;
+const CONF_THRESH  = 0.40;
+const MAJORITY_WIN = 15;
+const MAJORITY_REQ = 0.60;
+const STREAK_REQ   = 3;
 // Two-handed signs
 const TWO_HAND     = new Set(['pain','help','doctor']);
 // Model path (relative — place tfjs_model/ next to index.html)
@@ -506,10 +512,15 @@ async function maybeInfer(results) {
   if (!model || inferring) return;
   inferring = true;
   try {
-    const input = tf.tensor3d([frameBuffer], [1, SEQ_LEN, 144]);
+    // Flatten array of Float32Arrays into one contiguous Float32Array
+    const flat = new Float32Array(SEQ_LEN * 144);
+    frameBuffer.forEach((f, i) => flat.set(f, i * 144));
+    const input = tf.tensor(flat, [1, SEQ_LEN, 144]);
     const output = model.predict(input);
     const probs  = Array.from(await output.data());
     input.dispose(); output.dispose();
+    document.getElementById('dbg-infer').textContent =
+      `Inference: [${probs.map(p=>(p*100).toFixed(0)+'%').join(', ')}]`;
 
     latestConf = probs;
     updateBars(probs);
@@ -553,15 +564,18 @@ const HC = [
   [13,17],[17,18],[18,19],[19,20],[0,17]
 ];
 
+let resultsCallCount = 0;
 function onResults(results) {
   lastHandsResult = results;
+  resultsCallCount++;
+  document.getElementById('dbg-results').textContent = `onResults: called ${resultsCallCount}x`;
+
   const w = outCanvas.width, h = outCanvas.height;
   outCtx.clearRect(0, 0, w, h);
 
   const colors = ['#00FF88','#00D4FF'];
   (results.multiHandLandmarks || []).forEach((lms, i) => {
     const col = colors[i % 2];
-    // procCanvas and CSS-mirrored video are the same flip → draw at raw x,y
     drawConnectors(outCtx, lms, HC, {color: col, lineWidth: 2});
     drawLandmarks(outCtx, lms, {color: col, lineWidth: 1, radius: 3});
   });
@@ -569,10 +583,14 @@ function onResults(results) {
   const n = (results.multiHandLandmarks || []).length;
   handsChip.textContent = n === 0 ? 'No hands' : n === 1 ? '1 hand' : '2 hands';
   handsChip.className   = 'hands-chip' + (n > 0 ? ' detected' : '');
+  document.getElementById('dbg-hands').textContent =
+    `Hands: ${n} detected | handedness: ${(results.multiHandedness||[]).map(h=>h.classification[0].label).join(', ')||'—'}`;
 
   const features = extractFeatures(results);
   frameBuffer.push(features);
   if (frameBuffer.length > SEQ_LEN) frameBuffer.shift();
+
+  document.getElementById('dbg-buffer').textContent = `Buffer: ${frameBuffer.length} / ${SEQ_LEN}`;
 
   if (frameBuffer.length === SEQ_LEN) {
     statusChip.textContent = 'Recognizing…';
@@ -639,11 +657,12 @@ async function initHands() {
   hands.setOptions({
     maxNumHands: 2,
     modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence:  0.7
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence:  0.5
   });
   hands.onResults(onResults);
-  await hands.initialize();
+  // Don't call initialize() — let it init lazily on first send()
+  // Avoids the Module.arguments WASM abort on some browsers
 }
 
 // ══════════════════════════════════════════════
@@ -653,7 +672,6 @@ async function startup() {
   try {
     loadStatus.textContent = 'Loading ASL model…';
     model = await tf.loadLayersModel(MODEL_URL);
-    // Warm up
     const dummy = tf.zeros([1, SEQ_LEN, 144]);
     model.predict(dummy).dispose();
     dummy.dispose();
@@ -662,18 +680,26 @@ async function startup() {
     try {
       await initCamera();
     } catch(e) {
-      loadStatus.textContent = '⚠ Camera denied — please allow camera access and refresh';
+      loadStatus.textContent = '⚠ Camera denied — allow camera access and refresh';
       return;
     }
 
     loadStatus.textContent = 'Loading hand detector…';
-    await initHands();
+    try {
+      await initHands();
+    } catch(e) {
+      // WASM may throw but still be functional — continue anyway
+      console.warn('Hands init warning:', e);
+    }
 
+    // Always hide overlay so debug panel is visible
     loadOverlay.classList.add('hidden');
     statusChip.textContent = 'Ready';
   } catch (err) {
     loadStatus.textContent = '⚠ ' + err.message;
     console.error(err);
+    // Still hide overlay so user can see debug panel
+    loadOverlay.classList.add('hidden');
   }
 }
 
