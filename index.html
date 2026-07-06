@@ -540,14 +540,7 @@ function showPrediction(word, conf) {
 function onResults(results) {
   const w = outCanvas.width, h = outCanvas.height;
 
-  // Draw mirrored camera frame to display canvas
-  outCtx.clearRect(0, 0, w, h);
-  outCtx.save();
-  outCtx.scale(-1, 1);
-  outCtx.drawImage(results.image, -w, 0, w, h);
-  outCtx.restore();
-
-  // Draw landmarks
+  // Camera is already drawn by sendFrame — just draw landmarks on top
   if (results.leftHandLandmarks) {
     drawConnectors(outCtx, mirrorLandmarks(results.leftHandLandmarks, w),
       HAND_CONNECTIONS, {color:'#00FF88', lineWidth:2});
@@ -620,19 +613,28 @@ async function initCamera() {
 }
 
 async function sendFrame() {
-  if (!camRunning || video.readyState < 2) {
-    requestAnimationFrame(sendFrame);
-    return;
+  if (!camRunning) { requestAnimationFrame(sendFrame); return; }
+
+  const w = outCanvas.width, h = outCanvas.height;
+
+  if (video.readyState >= 2) {
+    // Always draw mirrored camera to display canvas so it's never black
+    outCtx.save();
+    outCtx.scale(-1, 1);
+    outCtx.drawImage(video, -w, 0, w, h);
+    outCtx.restore();
+
+    // Also draw flipped frame to processing canvas for holistic
+    procCtx.save();
+    procCtx.scale(-1, 1);
+    procCtx.drawImage(video, -w, 0, w, h);
+    procCtx.restore();
+
+    if (holistic) {
+      try { await holistic.send({ image: procCanvas }); } catch(e) {}
+    }
   }
-  const w = procCanvas.width, h = procCanvas.height;
 
-  // Draw flipped frame to processing canvas (matches cv2.flip in training)
-  procCtx.save();
-  procCtx.scale(-1, 1);
-  procCtx.drawImage(video, -w, 0, w, h);
-  procCtx.restore();
-
-  await holistic.send({ image: procCanvas });
   requestAnimationFrame(sendFrame);
 }
 
@@ -664,7 +666,12 @@ async function startup() {
     dummy.dispose();
 
     loadStatus.textContent = 'Starting camera…';
-    await initCamera();
+    try {
+      await initCamera();
+    } catch(e) {
+      loadStatus.textContent = '⚠ Camera denied — please allow camera access and refresh';
+      return;
+    }
 
     loadStatus.textContent = 'Loading hand detector…';
     await initHolistic();
