@@ -589,6 +589,19 @@ function onResults(results) {
   document.getElementById('dbg-hands').textContent =
     `Hands: L=${!!results.leftHandLandmarks} R=${!!results.rightHandLandmarks}`;
 
+  // No hands → clear display and reset buffer/smoother
+  if (n === 0) {
+    predWord.textContent  = '—';
+    confLabel.textContent = 'Waiting for sign…';
+    frameBuffer  = [];
+    predHistory  = [];
+    streak       = [];
+    lastEmitted  = null;
+    statusChip.textContent = 'Ready';
+    document.getElementById('dbg-buffer').textContent = 'Buffer: 0 / 30';
+    return;
+  }
+
   const features = extractFeatures(results);
   frameBuffer.push(features);
   if (frameBuffer.length > SEQ_LEN) frameBuffer.shift();
