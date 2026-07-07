@@ -330,6 +330,21 @@
   .phrase-icon { font-size: 22px; line-height: 1; color: var(--teal); }
   .phrase-text { font-size: 12px; }
 
+  /* Web version notice */
+  #web-notice {
+    background: #0d2540;
+    border-bottom: 1px solid #1e4d82;
+    color: #a8c8e8;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 9px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  #web-notice i { color: var(--teal); margin-top: 2px; flex-shrink: 0; }
+  #web-notice strong { color: var(--white); }
+
   /* Guide sections */
   .guide-section {
     background: #0d2540;
@@ -436,6 +451,12 @@
   <button class="tab-btn active" onclick="switchTab('asl')">👁 ASL Translator</button>
   <button class="tab-btn" onclick="switchTab('board')">🤚 Communication Board</button>
   <button class="tab-btn" onclick="switchTab('guide')">📖 User Guide</button>
+</div>
+
+<!-- Web version notice -->
+<div id="web-notice">
+  <i class="fa-solid fa-circle-info"></i>
+  <span>This is a browser demo of the Medivoice iOS app — the interface looks different but it runs the same underlying AI model. For best ASL detection, <strong>use a laptop</strong>. The full iOS app performs better and is optimized for iPhone&nbsp;/&nbsp;iPad.</span>
 </div>
 
 <!-- ══ ASL PANEL ══ -->
